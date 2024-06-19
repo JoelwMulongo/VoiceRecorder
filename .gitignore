@@ -1,0 +1,9 @@
+/build/
+*.exe
+*.obj
+*.pch
+*.pdb
+*.ilk
+*.ipdb
+*.iobj
+*.log
