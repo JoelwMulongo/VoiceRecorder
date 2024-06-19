@@ -1,0 +1,32 @@
+name: CMake Build
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up CMake
+      run: choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --yes
+
+    - name: Configure CMake
+      run: cmake -S . -B build
+
+    - name: Build
+      run: cmake --build build --config Release
+
+    - name: Archive production artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: Release
+        path: build/Release/
