@@ -1,42 +1,17 @@
 #include "VoiceRecorder.h"
-#include "WaveHeader.h"
-#include <windows.h>
-#include <iostream>
 
-bool VoiceRecorder::initialize() {
-    // Initialize audio input device
-    waveInOpen(&hWaveIn, WAVE_MAPPER, &waveFormat, (DWORD_PTR)waveInProc, (DWORD_PTR)this, CALLBACK_FUNCTION);
-    return true;
-}
+VoiceRecorder::VoiceRecorder() : hWaveIn(nullptr) {}
 
-void VoiceRecorder::startRecording(const std::string& filename) {
-    outFile.open(filename, std::ios::binary);
-    outFile.write(reinterpret_cast<const char*>(&waveHeader), sizeof(WaveHeader));
-    waveInStart(hWaveIn);
-}
-
-void VoiceRecorder::stopRecording() {
-    waveInStop(hWaveIn);
-    waveInClose(hWaveIn);
-    outFile.seekp(4, std::ios::beg);
-    uint32_t fileSize = outFile.tellp();
-    outFile.write(reinterpret_cast<const char*>(&fileSize), 4);
-    outFile.seekp(40, std::ios::beg);
-    uint32_t dataSize = fileSize - 44;
-    outFile.write(reinterpret_cast<const char*>(&dataSize), 4);
-    outFile.close();
-}
-
-void CALLBACK VoiceRecorder::waveInProc(HWAVEIN hwi, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
-    if (uMsg == WIM_DATA) {
-        WAVEHDR* pWaveHdr = (WAVEHDR*)dwParam1;
-        VoiceRecorder* recorder = (VoiceRecorder*)dwInstance;
-        recorder->outFile.write(pWaveHdr->lpData, pWaveHdr->dwBytesRecorded);
-        waveInAddBuffer(hwi, pWaveHdr, sizeof(WAVEHDR));
+VoiceRecorder::~VoiceRecorder() {
+    if (hWaveIn) {
+        waveInClose(hWaveIn);
     }
 }
 
-VoiceRecorder::VoiceRecorder() {
+void VoiceRecorder::startRecording(const std::string& filename) {
+    this->filename = filename;
+
+    WAVEFORMATEX waveFormat;
     waveFormat.wFormatTag = WAVE_FORMAT_PCM;
     waveFormat.nChannels = 1;
     waveFormat.nSamplesPerSec = 44100;
@@ -44,22 +19,57 @@ VoiceRecorder::VoiceRecorder() {
     waveFormat.nBlockAlign = 2;
     waveFormat.wBitsPerSample = 16;
     waveFormat.cbSize = 0;
-    waveHeader.chunkID = 0x46464952; // "RIFF"
-    waveHeader.format = 0x45564157; // "WAVE"
-    waveHeader.subchunk1ID = 0x20746d66; // "fmt "
-    waveHeader.subchunk1Size = 16;
-    waveHeader.audioFormat = 1;
-    waveHeader.numChannels = 1;
-    waveHeader.sampleRate = 44100;
-    waveHeader.byteRate = 44100 * 2;
-    waveHeader.blockAlign = 2;
-    waveHeader.bitsPerSample = 16;
-    waveHeader.subchunk2ID = 0x61746164; // "data"
-    waveHeader.subchunk2Size = 0;
+
+    if (waveInOpen(&hWaveIn, WAVE_MAPPER, &waveFormat, (DWORD_PTR)waveInProc, (DWORD_PTR)this, CALLBACK_FUNCTION) != MMSYSERR_NOERROR) {
+        // Handle error
+    }
+
+    waveHeader.lpData = new char[44100 * 2 * 10];  // Buffer for 10 seconds
+    waveHeader.dwBufferLength = 44100 * 2 * 10;
+    waveHeader.dwFlags = 0;
+    waveHeader.dwLoops = 0;
+
+    waveInPrepareHeader(hWaveIn, &waveHeader, sizeof(WAVEHDR));
+    waveInAddBuffer(hWaveIn, &waveHeader, sizeof(WAVEHDR));
+    waveInStart(hWaveIn);
+
+    outFile.open(filename, std::ios::binary);
+
+    // Write WAV header placeholder
+    outFile.write("RIFF----WAVEfmt ", 16);
+    uint32_t fmtSize = 16;
+    outFile.write(reinterpret_cast<const char*>(&fmtSize), sizeof(fmtSize));
+    outFile.write(reinterpret_cast<const char*>(&waveFormat), sizeof(waveFormat));
+    outFile.write("data----", 8);
 }
 
-VoiceRecorder::~VoiceRecorder() {
-    if (hWaveIn != NULL) {
-        waveInClose(hWaveIn);
+void VoiceRecorder::stopRecording() {
+    waveInStop(hWaveIn);
+    waveInReset(hWaveIn);
+
+    // Update WAV header
+    std::streampos fileSize = outFile.tellp();
+    outFile.seekp(4, std::ios::beg);
+    uint32_t riffSize = static_cast<uint32_t>(fileSize) - 8;
+    outFile.write(reinterpret_cast<const char*>(&riffSize), sizeof(riffSize));
+
+    outFile.seekp(40, std::ios::beg);
+    uint32_t dataSize = static_cast<uint32_t>(fileSize) - 44;
+    outFile.write(reinterpret_cast<const char*>(&dataSize), sizeof(dataSize));
+
+    outFile.close();
+
+    waveInUnprepareHeader(hWaveIn, &waveHeader, sizeof(WAVEHDR));
+    delete[] waveHeader.lpData;
+
+    waveInClose(hWaveIn);
+    hWaveIn = nullptr;
+}
+
+void CALLBACK VoiceRecorder::waveInProc(HWAVEIN hwi, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2) {
+    if (uMsg == WIM_DATA) {
+        VoiceRecorder* recorder = reinterpret_cast<VoiceRecorder*>(dwInstance);
+        recorder->outFile.write(recorder->waveHeader.lpData, recorder->waveHeader.dwBytesRecorded);
+        waveInAddBuffer(hwi, reinterpret_cast<LPWAVEHDR>(dwParam1), sizeof(WAVEHDR));
     }
 }
