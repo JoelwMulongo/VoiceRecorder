@@ -7,3 +7,6 @@
 *.ipdb
 *.iobj
 *.log
+build/
+*.exe
+*.wav
