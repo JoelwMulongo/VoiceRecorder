@@ -25,6 +25,12 @@ add_executable(VoiceRecorder
 )
 target_link_libraries(VoiceRecorder PRIVATE winmm Threads::Threads)
 
+# With MSVC, link the runtime statically (no Visual C++ Redistributable needed)
+if(MSVC)
+    target_compile_options(VoiceRecorderApp PRIVATE $<$<CONFIG:Release>:/MT>)
+    target_compile_options(VoiceRecorder PRIVATE $<$<CONFIG:Release>:/MT>)
+endif()
+
 # With MinGW, link the runtime statically so the .exe runs on any PC with no extra DLLs
 if(MINGW)
     target_link_options(VoiceRecorderApp PRIVATE -static -static-libgcc -static-libstdc++)
