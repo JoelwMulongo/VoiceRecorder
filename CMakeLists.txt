@@ -11,9 +11,22 @@ endif()
 
 find_package(Threads REQUIRED)
 
+# Windows app with Record / Stop buttons (the one to use day to day)
+add_executable(VoiceRecorderApp WIN32
+    src/gui_main.cpp
+    src/VoiceRecorder.cpp
+)
+target_link_libraries(VoiceRecorderApp PRIVATE winmm shell32 Threads::Threads)
+
+# Simple 5-second command-line test
 add_executable(VoiceRecorder
     src/main.cpp
     src/VoiceRecorder.cpp
 )
-
 target_link_libraries(VoiceRecorder PRIVATE winmm Threads::Threads)
+
+# With MinGW, link the runtime statically so the .exe runs on any PC with no extra DLLs
+if(MINGW)
+    target_link_options(VoiceRecorderApp PRIVATE -static -static-libgcc -static-libstdc++)
+    target_link_options(VoiceRecorder PRIVATE -static -static-libgcc -static-libstdc++)
+endif()
